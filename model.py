@@ -8,11 +8,9 @@ class Shrinkage_CW(nn.Module):
     def __init__(self, channel):
         super(Shrinkage_CW, self).__init__()
         self.fc = nn.Sequential(
-            nn.Conv2d(channel, channel, 3, 1, 1),# 3*3 / 1*1
-            # nn.Conv2d(channel, channel, 1),
+            nn.Conv2d(channel, channel, 3, 1, 1),
             nn.ReLU(inplace=True),
             nn.Conv2d(channel, channel, 3, 1, 1)
-            # nn.Conv2d(channel, channel, 1)
         )
 
     def forward(self, x):
