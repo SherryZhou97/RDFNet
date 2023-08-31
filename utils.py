@@ -7,10 +7,10 @@ import torch
 import logging
 from ssim_torch import ssim
 
-def generate_masks(mask):
+def generate_masks(mask_path):
 
-    # mask = sio.loadmat(mask_path + '/mask.mat')
-    # mask = mask['mask']
+    mask = sio.loadmat(mask_path + '/mask.mat')
+    mask = mask['mask']
     mask3d = np.tile(mask[:,:,np.newaxis],(1,1,28))
     mask3d = np.transpose(mask3d, [2, 0, 1])
     mask3d = torch.from_numpy(mask3d)
@@ -18,13 +18,36 @@ def generate_masks(mask):
     mask3d_batch = mask3d.expand([1, nC, H, W]).cuda().float()
     return mask3d_batch
 
+'''
+def mask_guided(mask_path):
+
+    mask = sio.loadmat(mask_path + '/mask.mat')
+    mask = mask['mask']
+    mask3d = np.tile(mask[:,:,np.newaxis],(1,1,28))
+    mask3d = np.transpose(mask3d, [2, 0, 1])
+    mask3d = torch.from_numpy(mask3d)
+    [nC, row, col] = mask3d.shape
+    # shift
+    output = torch.zeros(nC, row, col+(nC-1)*2).cuda().float()
+    for i in range(28):
+        output[i,:,2*i:2*i+col] = mask3d[i,:,:]
+    # 1*1
+    
+    mask3d = np.tile(mask[:,:,np.newaxis],(1,1,28))
+    mask3d = np.transpose(mask3d, [2, 0, 1])
+    mask3d = torch.from_numpy(mask3d)
+    [nC, H, W] = mask3d.shape
+    mask3d_batch = mask3d.expand([1, nC, H, W]).cuda().float()
+    return mask3d_batch
+'''
+
 def LoadTraining(path):
     imgs = []
     scene_list = os.listdir(path)
     scene_list.sort()
     print('training sences:', len(scene_list))
     max_ = 0
-    # for i in range(2):
+    # for i in range(1):
     for i in range(len(scene_list)):
         scene_path = path + scene_list[i]
         if 'mat' not in scene_path:
@@ -32,9 +55,10 @@ def LoadTraining(path):
         img_dict = sio.loadmat(scene_path)
         if "img_expand" in img_dict:
             img = img_dict['img_expand']/65536.
-        elif "img" in img_dict:
-            img = img_dict['img']/65536.
+        elif "cube" in img_dict:
+            img = img_dict['cube']/65536.
         img = img.astype(np.float32)
+        img = img/img.max()
         imgs.append(img)
         print('Sence {} is loaded. {}'.format(i, scene_list[i]))
 
@@ -46,8 +70,8 @@ def LoadTest(path_test):
     test_data = np.zeros((len(scene_list), 256, 256, 28))
     for i in range(len(scene_list)):
         scene_path = path_test + scene_list[i]
-        img = sio.loadmat(scene_path)['img']
-        #img = img/img.max()
+        img = sio.loadmat(scene_path)['cube']
+        img = img/img.max()
         test_data[i,:,:,:] = img
         # print(i, img.shape, img.max(), img.min())
     test_data = torch.from_numpy(np.transpose(test_data, (0, 3, 1, 2)))
@@ -110,7 +134,7 @@ def gen_meas_torch(data_batch, mask3d_batch):
     y_temp = shift_back(meas)
     PhiTy = torch.mul(y_temp, mask3d_batch)
     return PhiTy, y_temp
-
+    
 def shift(inputs, step=2):
     [bs, nC, row, col] = inputs.shape
     output = torch.zeros(bs, nC, row, col+(nC-1)*step).cuda().float()
@@ -118,9 +142,26 @@ def shift(inputs, step=2):
         output[:,i,:,step*i:step*i+col] = inputs[:,i,:,:]
     return output
 
+def shift2(inputs, step=2):
+    [bs, nC, row, col] = inputs.shape
+    output = torch.zeros(bs, nC, row, col+(nC-1)*step).float()
+    for i in range(nC):
+        output[:,i,:,step*i:step*i+col] = inputs[:,i,:,:]
+    return output
+
+def shift_back2(inputs,step=2):          # input [bs,256,310]  output [bs, 28, 256, 256]
+    [bs, nC, row, col] = inputs.shape # 1*28*256*310
+    # nC = 28
+    # print(inputs.shape)
+    output = torch.zeros(bs, nC, row, col-(nC-1)*step).float()
+    for i in range(nC):
+        output[:,i,:,:] = inputs[:,i,:,step*i:step*i+col-(nC-1)*step]
+    return output
+    
 def shift_back(inputs,step=2):          # input [bs,256,310]  output [bs, 28, 256, 256]
-    [bs, row, col] = inputs.shape
+    [bs, row, col] = inputs.shape # 1*28*256*310
     nC = 28
+    # print(inputs.shape)
     output = torch.zeros(bs, nC, row, col-(nC-1)*step).cuda().float()
     for i in range(nC):
         output[:,i,:,:] = inputs[:,:,step*i:step*i+col-(nC-1)*step]
